@@ -46,6 +46,13 @@ COMMENTS_CACHE = None
 #   IDA MENU - HANDLERS
 # ------------------------------------------------------------
 
+def get_highlighted_identifier():
+    if not hasattr( idaapi, "get_highlighted_identifier" ):
+        thing = idaapi.get_highlight(idaapi.get_current_viewer())
+        if thing and thing[1]:
+            return thing[0]
+    else:
+        return idaapi.get_highlighted_identifier()
 
 class ShowSettingsHandler(idaapi.action_handler_t):
 
@@ -196,7 +203,7 @@ class ScreenEAHook(ida_kernwin.View_Hooks):
 def goto(shift=False):
     print("GhIDA:: [DEBUG] goto called")
 
-    symbol = idaapi.get_highlighted_identifier()
+    symbol = get_highlighted_identifier()
     if not symbol:
         return False
 
@@ -381,7 +388,7 @@ class DecompiledViewer_t(idaapi.simplecustviewer_t):
         comment = comment.strip()
 
         # Create the new text
-        full_comment = "\t// %s" % comment
+        full_comment = "    // %s" % comment
         text = text.rstrip()
         new_text = text + full_comment
         text_colored = self.color_line(new_text)
@@ -428,7 +435,7 @@ class DecompiledViewer_t(idaapi.simplecustviewer_t):
         provided by the user in the Pop-Up
         """
         # Get the symbol
-        symbol = idaapi.get_highlighted_identifier()
+        symbol = get_highlighted_identifier()
         if not symbol:
             idaapi.warning("Select a symbol")
             return False
@@ -869,104 +876,100 @@ def decompile_function_wrapper(cache_only=False, do_show=True):
     Perform all the operations to decompile the code of the selected
     function and display in the decompile view.
     """
-    try:
-        global DECOMP_VIEW
-        ea = gl.get_current_address()
-        if not ea:
-            # This is not a function
-            # GhIDA can decompile only IDA recognized functions.
-            return
 
-        # Set the base_image
-        image_base = idaapi.get_imagebase()
-        if GHIDA_CONF.image_base is None:
-            GHIDA_CONF.image_base = image_base
-
-        # Check if the program has been rebased
-        if GHIDA_CONF.image_base != image_base:
-            print(
-                "GhIDA:: [DEBUG] program has been rebased. Invalidating caches.")
-            DECOMPILED_CACHE.invalidate_cache()
-            COMMENTS_CACHE.invalidate_cache()
-            gl.force_export_XML_file()
-
-        # Display the Configuration form
-        if GHIDA_CONF.show_settings and \
-                not GHIDA_CONF.global_settings:
-            canceled = not(display_configuration_form())
-            if canceled:
-                return
-
-        # If exists, clear the decompile view.
-        if DECOMP_VIEW:
-            DECOMP_VIEW.clear(msg="Decompiling function...",
-                              do_show=do_show)
-
-        # Call export XML file. It also populates the SYMBOL DICT TABLE (S_D_T)
-        # for the highlighting, renaming, etc.
-        # Do it here because I need S_D_T it also if the result is in the
-        # cache.
-        gl.export_ida_project_to_xml()
-
-        # Check the cache
-        decompiled = DECOMPILED_CACHE.get_decompiled_cache(ea)
-
-        # Cache miss - opt1: do not use Ghidra, just display what is in the
-        # cache
-        if not decompiled and cache_only:
-            # This is a redundant check...
-            if DECOMP_VIEW:
-                msg = "Function 0x%s\n\n" % ea
-                msg += "Decompiled code not available in cache.\n"
-                msg += "Press Ctrl-Alt-D or Right click GhIDA decompiler "
-                msg += "to decompile the function."
-                DECOMP_VIEW.clear(msg=msg, do_show=do_show)
-            print("GhIDA:: [DEBUG] Function code not available in cache.")
-            return
-
-        # Cache miss - opt2: Use Ghidra to decompile the function
-        if not decompiled:
-            decompiled = gl.decompile_function(
-                address=ea,
-                use_ghidra_server=GHIDA_CONF.use_ghidra_server,
-                ghidra_headless_path=GHIDA_CONF.ghidra_headless_path,
-                ghidra_plugins_path=GHIDA_CONF.ghidra_plugins_path,
-                ghidra_server_url=GHIDA_CONF.ghidra_server_url)
-
-            if decompiled:
-                # Add decompiled_code to cache
-                DECOMPILED_CACHE.add_decompiled_to_cache(ea, decompiled)
-            else:
-                # Something went wrong or was interrupted
-                if DECOMP_VIEW:
-                    DECOMP_VIEW.clear(msg="Decompiling interrupted.",
-                                      do_show=do_show)
-                print("GhIDA:: [!] Decompilation interrupted.")
-                return
-
-        # Decompiled code is available.
-        if DECOMP_VIEW:
-            # The view exists, update it
-            DECOMP_VIEW.update(ea, decompiled, do_show=do_show)
-        else:
-            # Create the view
-            DECOMP_VIEW = DecompiledViewer_t()
-            if not DECOMP_VIEW.Create(decompiled, ea):
-                print("GhIDA:: [!] Error creating the view")
-                return
-            DECOMP_VIEW.Show()
-
-        register_actions_and_handlers_decompile_view()
-
-        # Add comments
-        comment_list = COMMENTS_CACHE.get_comments_cache(ea)
-        if comment_list:
-            DECOMP_VIEW.add_comments(comment_list)
-
+    global DECOMP_VIEW
+    ea = gl.get_current_address()
+    if not ea:
+        # This is not a function
+        # GhIDA can decompile only IDA recognized functions.
         return
-    except Exception:
-        print("GhIDA:: [!] Decompilation wrapper error")
-        idaapi.warning("GhIDA decompilation wrapper error")
+
+    # Set the base_image
+    image_base = idaapi.get_imagebase()
+    if GHIDA_CONF.image_base is None:
+        GHIDA_CONF.image_base = image_base
+
+    # Check if the program has been rebased
+    if GHIDA_CONF.image_base != image_base:
+        print(
+            "GhIDA:: [DEBUG] program has been rebased. Invalidating caches.")
+        DECOMPILED_CACHE.invalidate_cache()
+        COMMENTS_CACHE.invalidate_cache()
+        gl.force_export_XML_file()
+
+    # Display the Configuration form
+    if GHIDA_CONF.show_settings and \
+            not GHIDA_CONF.global_settings:
+        canceled = not(display_configuration_form())
+        if canceled:
+            return
+
+    # If exists, clear the decompile view.
+    if DECOMP_VIEW:
+        DECOMP_VIEW.clear(msg="Decompiling function...",
+                          do_show=do_show)
+
+    # Call export XML file. It also populates the SYMBOL DICT TABLE (S_D_T)
+    # for the highlighting, renaming, etc.
+    # Do it here because I need S_D_T it also if the result is in the
+    # cache.
+    gl.export_ida_project_to_xml()
+
+    # Check the cache
+    decompiled = DECOMPILED_CACHE.get_decompiled_cache(ea)
+
+    # Cache miss - opt1: do not use Ghidra, just display what is in the
+    # cache
+    if not decompiled and cache_only:
+        # This is a redundant check...
+        if DECOMP_VIEW:
+            msg = "Function 0x%s\n\n" % ea
+            msg += "Decompiled code not available in cache.\n"
+            msg += "Press Ctrl-Alt-D or Right click GhIDA decompiler "
+            msg += "to decompile the function."
+            DECOMP_VIEW.clear(msg=msg, do_show=do_show)
+        print("GhIDA:: [DEBUG] Function code not available in cache.")
+        return
+
+    # Cache miss - opt2: Use Ghidra to decompile the function
+    if not decompiled:
+        decompiled = gl.decompile_function(
+            address=ea,
+            use_ghidra_server=GHIDA_CONF.use_ghidra_server,
+            ghidra_headless_path=GHIDA_CONF.ghidra_headless_path,
+            ghidra_plugins_path=GHIDA_CONF.ghidra_plugins_path,
+            ghidra_server_url=GHIDA_CONF.ghidra_server_url)
+
+        if decompiled:
+            # Add decompiled_code to cache
+            DECOMPILED_CACHE.add_decompiled_to_cache(ea, decompiled)
+        else:
+            # Something went wrong or was interrupted
+            if DECOMP_VIEW:
+                DECOMP_VIEW.clear(msg="Decompiling interrupted.",
+                                  do_show=do_show)
+            print("GhIDA:: [!] Decompilation interrupted.")
+            return
+
+    # Decompiled code is available.
+    if DECOMP_VIEW:
+        # The view exists, update it
+        DECOMP_VIEW.update(ea, decompiled, do_show=do_show)
+    else:
+        # Create the view
+        DECOMP_VIEW = DecompiledViewer_t()
+        if not DECOMP_VIEW.Create(decompiled, ea):
+            print("GhIDA:: [!] Error creating the view")
+            return
+        DECOMP_VIEW.Show()
+
+    register_actions_and_handlers_decompile_view()
+
+    # Add comments
+    comment_list = COMMENTS_CACHE.get_comments_cache(ea)
+    if comment_list:
+        DECOMP_VIEW.add_comments(comment_list)
+
 
 
 # ------------------------------------------------------------

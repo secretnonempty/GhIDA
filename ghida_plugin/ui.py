@@ -20,7 +20,7 @@
 #  limitations under the License.                                            #
 #                                                                            #
 ##############################################################################
-
+_BC695 = 1
 import ida_kernwin
 import idaapi
 
@@ -41,6 +41,13 @@ DO_NOT_SHOW_DIALOG_CONST = 7
 # ------------------------------------------------------------
 #   SYMBOLS HIGHLIGHTING
 # ------------------------------------------------------------
+def get_highlighted_identifier():
+    if not hasattr( idaapi, "get_highlighted_identifier" ):
+        thing = idaapi.get_highlight(idaapi.get_current_viewer())
+        if thing and thing[1]:
+            return thing[0]
+    else:
+        return idaapi.get_highlighted_identifier()
 
 def highlight_symbol_in_DISASM():
     """
@@ -49,7 +56,7 @@ def highlight_symbol_in_DISASM():
     """
     # print("GhIDA:: [DEBUG] highlight_symbol_in_DISASM called")
     disasm_widget = idaapi.find_widget('IDA View-A')
-    symbol = idaapi.get_highlighted_identifier()
+    symbol = get_highlighted_identifier()
     if not symbol:
         # TODO improve it
         # Highlight a non-existing symbole
@@ -73,7 +80,7 @@ def highlight_symbol_in_DECOMP():
     highlight the corresponding symbol in DECOMP view.
     """
     # print("GhIDA:: [DEBUG] highlight_symbol_in_DECOMP called")
-    symbol = idaapi.get_highlighted_identifier()
+    symbol = get_highlighted_identifier()
     if not symbol:
         return
 

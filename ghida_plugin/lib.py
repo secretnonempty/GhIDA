@@ -45,7 +45,7 @@ from idaxml import Cancelled
 from idaxml import XmlExporter
 
 COUNTER_MAX = 300
-TIMEOUT = 300
+TIMEOUT = 600
 GLOBAL_CHECKIN = False
 GLOBAL_FILENAME = None
 EXPORT_XML_FILE = True
@@ -54,6 +54,10 @@ EXPORT_XML_FILE = True
 #   PLUGIN CORE FUNCTIONS
 # ------------------------------------------------------------
 
+if hasattr( idaapi, "wasBreak" ):
+    wasbreak = idaapi.wasBreak
+else:
+    wasbreak = idaapi.user_cancelled
 
 def force_export_XML_file():
     global EXPORT_XML_FILE
@@ -67,7 +71,8 @@ def create_random_filename():
     if not GLOBAL_FILENAME:
         letters = [random.choice(string.ascii_letters) for i in range(5)]
         random_string = ''.join(letters)
-        GLOBAL_FILENAME = "%s_%s" % (idautils.GetInputFileMD5(), random_string)
+        md5str = idautils.GetInputFileMD5().strip( '\0' )
+        GLOBAL_FILENAME = "%s_%s" % ( md5str, random_string)
     return GLOBAL_FILENAME
 
 
@@ -83,7 +88,7 @@ def get_ida_exported_files():
 
     return xml_file_path, bin_file_path
 
-
+import base64
 def export_ida_project_to_xml():
     """
     Export the current project into XML format
@@ -91,10 +96,8 @@ def export_ida_project_to_xml():
     global EXPORT_XML_FILE
 
     xml_file_path, bin_file_path = get_ida_exported_files()
-    print("GhIDA:: [DEBUG] EXPORT_XML_FILE: %s" % EXPORT_XML_FILE)
-
-    # Check if files are alredy available
-    if os.path.isfile(xml_file_path) and \
+    print("GhIDA:: [DEBUG] EXPORT_XML_FILE: %s, '%s'----- '%s'" % (EXPORT_XML_FILE, base64.b64encode(xml_file_path.strip()), bin_file_path.strip() )) # Check if files are alredy available
+    if xml_file_path and bin_file_path and os.path.isfile(xml_file_path) and \
             os.path.isfile(bin_file_path) and \
             not EXPORT_XML_FILE:
         return xml_file_path, bin_file_path
@@ -180,7 +183,7 @@ def ghida_finalize(use_ghidra_server, ghidra_server_url):
 # ------------------------------------------------------------
 #   GHIDRA LOCAL
 # ------------------------------------------------------------
-
+import traceback
 def ghidra_headless(address,
                     xml_file_path,
                     bin_file_path,
@@ -228,7 +231,7 @@ def ghidra_headless(address,
                 'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP,
                 'shell': True
             }
-
+        print "Cmd: {}".format( cmd )
         p = subprocess.Popen(cmd,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
@@ -242,16 +245,16 @@ def ghidra_headless(address,
         while not stop:
             time.sleep(0.1)
             counter += 1
-            subprocess.Popen.poll(p)
 
+            subprocess.Popen.poll(p)
+            print( p.stdout.read() )
             # Process terminated
             if p.returncode is not None:
                 stop = True
                 print("GhIDA:: [INFO] Ghidra analysis completed!")
                 continue
-
             # User terminated action
-            if idaapi.wasBreak():
+            if wasbreak():
                 # Termiante the process!
                 if os.name == 'posix':
                     os.killpg(os.getpgid(p.pid), signal.SIGTERM)
@@ -270,6 +273,7 @@ def ghidra_headless(address,
 
         # Check if JSON response is available
         if os.path.isfile(output_path):
+            print output_path
             with open(output_path) as f_in:
                 j = json.load(f_in)
                 if j['status'] == "completed":
@@ -286,6 +290,7 @@ def ghidra_headless(address,
 
     except Exception as e:
         print("GhIDA:: [!] %s" % e)
+        traceback.print_exc(file=sys.stdout)
         print("GhIDA:: [!] Ghidra headless analysis failed")
         idaapi.warning("Ghidra headless analysis failed")
         decompiled_code = None
@@ -366,7 +371,7 @@ def ghidraaas_checkin(bin_file_path, filename, ghidra_server_url):
             time.sleep(0.1)
 
             # User terminated action
-            if idaapi.wasBreak():
+            if wasbreak():
                 stop = True
                 print("GhIDA:: [!] Check-in interrupted.")
                 continue
@@ -446,7 +451,7 @@ def ghidraaas_checkout(ghidra_server_url):
             # idaapi.request_refresh(idaapi.IWID_DISASMS)
             time.sleep(0.1)
 
-            if idaapi.wasBreak():
+            if wasbreak():
                 print("GhIDA:: [!] Check-out interrupted.")
                 stop = True
                 continue
@@ -568,7 +573,7 @@ def ghidraaas_decompile(address,
             # print("waiting decompile 1 zzz")
             time.sleep(0.1)
 
-            if idaapi.wasBreak():
+            if wasbreak():
                 print("GhIDA:: [!] decompilation interrupted.")
                 stop = True
                 continue

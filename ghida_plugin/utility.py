@@ -262,7 +262,10 @@ def get_current_address():
         return None
 
     # Get function start address
-    ea = func.startEA
+    if hasattr(func, "startEA"):
+        ea = func.startEA
+    elif hasattr(func, "start_ea"):
+        ea = func.start_ea
     ea = hex(ea).strip("0x").strip("L")
     return ea
 
@@ -278,7 +281,10 @@ def convert_address(ca):
         return None
 
     # Get function start address
-    ea = func.startEA
+    if hasattr(func, "startEA"):
+        ea = func.startEA
+    elif hasattr(func, "start_ea"):
+        ea = func.start_ea
     ea = hex(ea).strip("0x").strip("L")
     return ea
 
